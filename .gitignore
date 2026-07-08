@@ -1,0 +1,16 @@
+# Terraform
+**/.terraform/*
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Секреты / личное
+personal.auto.tfvars
+.authorized_key.json
+*.authorized_key.json
+
+# Python
+__pycache__/
+*.pyc
