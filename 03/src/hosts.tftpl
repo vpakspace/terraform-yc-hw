@@ -1,0 +1,20 @@
+[webservers]
+%{ for vm in webservers ~}
+${vm.name} ansible_host=${coalesce(vm.network_interface[0].nat_ip_address, vm.network_interface[0].ip_address)} fqdn=${vm.fqdn}
+%{ endfor ~}
+[databases]
+%{ for vm in databases ~}
+${vm.name} ansible_host=${coalesce(vm.network_interface[0].nat_ip_address, vm.network_interface[0].ip_address)} fqdn=${vm.fqdn}
+%{ endfor ~}
+[storage]
+%{ for vm in storage ~}
+${vm.name} ansible_host=${coalesce(vm.network_interface[0].nat_ip_address, vm.network_interface[0].ip_address)} fqdn=${vm.fqdn}
+%{ endfor ~}
+%{ if length(bastion) > 0 ~}
+[bastion]
+%{ for vm in bastion ~}
+${vm.name} ansible_host=${vm.network_interface[0].nat_ip_address} fqdn=${vm.fqdn}
+%{ endfor ~}
+[all:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyCommand="ssh -W %h:%p -q -o StrictHostKeyChecking=no ubuntu@${bastion[0].network_interface[0].nat_ip_address}"'
+%{ endif ~}

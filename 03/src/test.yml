@@ -1,0 +1,19 @@
+---
+# Простой smoke-playbook для Задания 6*: доступность ВМ через bastion.
+- name: Terraform + Ansible smoke-test через bastion
+  hosts: webservers:databases:storage
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Дождаться доступности SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+
+    - name: Записать метку на ВМ
+      ansible.builtin.raw: echo "provisioned by terraform+ansible on $(hostname) at $(date)" | tee /tmp/terraform_ansible.txt
+      register: mark
+
+    - name: Показать результат
+      ansible.builtin.debug:
+        msg: "{{ mark.stdout_lines }}"
