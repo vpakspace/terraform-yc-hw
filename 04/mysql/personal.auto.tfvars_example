@@ -1,0 +1,4 @@
+# Скопируйте в personal.auto.tfvars и заполните (файл в .gitignore).
+cloud_id    = ""
+folder_id   = ""
+db_password = "" # мин. 8 символов, например Netology2026!

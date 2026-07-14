@@ -1,0 +1,17 @@
+#cloud-config
+users:
+  - name: ubuntu
+    groups: sudo
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    # Задание 1: ssh-ключ приходит из переменной через template_file (vars = { ssh_key = ... }),
+    # а не хардкодом. ssh_authorized_keys — это СПИСОК, поэтому ключ идёт элементом списка "- ".
+    ssh_authorized_keys:
+      - ${ssh_key}
+package_update: true
+package_upgrade: false
+# Задание 1: установка nginx через cloud-init.
+packages:
+  - nginx
+runcmd:
+  - [systemctl, enable, --now, nginx]
