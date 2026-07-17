@@ -198,6 +198,72 @@ Terraform state has been successfully unlocked!
 
 ---
 
+## Задание 3 — ветка terraform-hotfix и pull request
+
+Ветка [`terraform-hotfix`](https://github.com/vpakspace/terraform-yc-hw/tree/terraform-hotfix)
+создана из `terraform-05`. Линтеры прогнаны уже по **собственному** коду (каталог `05/task1`
+не в счёт — там лежит чужой код, объект задания 1) и нашли **12 замечаний**, все исправлены:
+
+| Инструмент | Замечание | Где | Как исправлено |
+|---|---|---|---|
+| tflint | `terraform_module_pinned_source` × 2 | `src/main.tf` | `?ref=main` → `?ref=4d05fab8…` — коммит-хеш тега 1.0.0 |
+| tflint | `terraform_required_providers` | `src/providers.tf` | провайдеру `yandex` задан `version = "~> 0.217"` |
+| tflint | `terraform_unused_declarations` × 4 | `validation/variables.tf` | переменные выведены в [`validation/outputs.tf`](validation/outputs.tf) |
+| checkov | `CKV_TF_1`, `CKV_TF_2` × 2 модуля | `src/main.tf` | тот же коммит-хеш закрывает оба правила |
+| checkov | `CKV_YC_3` | `backend-infra/main.tf` | бакет со state шифруется ключом KMS |
+
+![линтеры до и после](img/task3_lint_before_after.png)
+
+**Почему хеш, а не тег.** Правила спорят между собой: `CKV_TF_2` требует тег с номером версии,
+а `CKV_TF_1` — коммит-хеш. Проверка показала, что хеш устраивает оба (тег `1.0.0` оставляет
+`CKV_TF_1` красным, а хеш даёт `Passed checks: 2, Failed checks: 0`). Это логично: тег можно
+передвинуть на другой коммит, хеш — нельзя, поэтому неизменяемая ссылка строго сильнее.
+Взят хеш коммита, на который указывает тег `1.0.0`, а сам тег назван в комментарии рядом.
+
+**Почему KMS.** `CKV_YC_3` требует шифровать бакет, и для state это по делу: он хранит слепок
+всей инфраструктуры вместе с чувствительными значениями. Добавлен `yandex_kms_symmetric_key`,
+а обоим сервисным аккаунтам выдана роль `kms.keys.encrypterDecrypter` — без неё backend не
+смог бы писать в зашифрованный бакет.
+
+**Результат** — оба линтера чисты:
+
+```
+$ tflint --chdir=src|backend-infra|validation --format compact     # 0 issues, exit=0
+$ checkov -d src            → Passed checks: 4, Failed checks: 0
+$ checkov -d backend-infra  → Passed checks: 7, Failed checks: 0
+```
+
+**План изменений инфраструктуры.** Правки не косметические, `terraform plan` это показывает:
+
+```
+# 05/src
+  ~ module.marketing_vm.yandex_compute_instance.vm[0]
+  ~ module.analytics_vm.yandex_compute_instance.vm[0]
+      ~ description = "TODO: description; {{terraform yyy managed}}"
+                   -> "TODO: description; {{terraform managed}}"
+Plan: 0 to add, 2 to change, 0 to destroy.
+
+# 05/backend-infra
+  + yandex_kms_symmetric_key.tfstate
+  + yandex_kms_symmetric_key_iam_member.bucket_admin
+  + yandex_kms_symmetric_key_iam_member.tfstate
+  ~ yandex_storage_bucket.tfstate
+      + sse_algorithm = "aws:kms"
+Plan: 3 to add, 1 to change, 0 to destroy.
+```
+
+Разница в `description` — наглядная иллюстрация к самому замечанию: пока код ссылался на ветку
+`main`, её автор успел поменять модуль, и та же конфигурация стала разворачивать другую ВМ.
+Именно от этого и защищает закрепление версии.
+
+**Pull request: [#1 — fix: устранены все замечания tflint и checkov](https://github.com/vpakspace/terraform-yc-hw/pull/1)**
+(`terraform-hotfix` → `terraform-05`). Результаты анализа обоих линтеров и планы обеих
+конфигураций — в [комментарии к PR](https://github.com/vpakspace/terraform-yc-hw/pull/1#issuecomment-5000074473).
+
+Вливать его в `terraform-05` не требуется — по условию задания PR открыт для ревью.
+
+---
+
 ## Задание 4 — валидация ip-адресов
 
 Код: [`validation/variables.tf`](validation/variables.tf).
@@ -306,6 +372,76 @@ variable "in_the_end_there_can_be_only_one" {
 
 ---
 
+## Задание 6* — CI/CD в GitHub Actions
+
+Пайплайн: [`.github/workflows/terraform-05.yml`](../.github/workflows/terraform-05.yml).
+Взят за образец [`05/gitlab-ci.yml`](https://github.com/netology-code/ter-homeworks/blob/main/05/gitlab-ci.yml)
+из демо: сначала этап линтеров с сохранением отчётов в артефакты, затем этап работы с инфраструктурой.
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      action:                       # plan | apply | destroy
+        type: choice
+jobs:
+  lint:                             # tflint + checkov → артефакты для code review
+  terraform:
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4   # «скачайте с её помощью ваш репозиторий»
+      - run: terraform init -input=false
+      - run: terraform plan  -input=false
+      - run: terraform apply -auto-approve    # if: inputs.action == 'apply'
+      - run: terraform destroy -auto-approve  # if: inputs.action == 'destroy'
+```
+
+Ключевые моменты:
+
+- **Ни одного секрета в коде.** Реквизиты приходят из GitHub Secrets: `YC_SA_KEY` (ключ
+  сервисного аккаунта — раннер кладёт его в файл и передаёт путь через `TF_VAR_sa_key_file`),
+  `YC_CLOUD_ID`, `YC_FOLDER_ID`, `VM_PUBLIC_KEY`, а также `TFSTATE_ACCESS_KEY` /
+  `TFSTATE_SECRET_KEY` для backend — те самые статические ключи из задания 7*.
+  Локально их роль играют `personal.auto.tfvars` и `~/.aws/credentials`, которые в `.gitignore`.
+- **Общий state.** Раннер работает с тем же backend в Object Storage, что и рабочая машина,
+  поэтому CI видит актуальное состояние, а встроенные блокировки не дают выполнить два apply
+  одновременно — ровно та проблема, ради которой remote state и заводят в команде.
+- **`terraform_wrapper: false`** у `setup-terraform`: обёртка подменяет вывод команд своим,
+  и логи `apply`/`destroy` становятся нечитаемыми.
+
+### Прогоны
+
+Запуск: `gh workflow run terraform-05.yml --ref terraform-05 -f action=<plan|apply|destroy>`
+(или кнопкой Run workflow в интерфейсе). Файл workflow продублирован в ветку `main`, потому что
+GitHub регистрирует `workflow_dispatch` только из ветки по умолчанию; сам прогон при этом идёт
+по коду и состоянию ветки `terraform-05`.
+
+Полный цикл — инфраструктура развёрнута и уничтожена **средствами CI**:
+
+| Прогон | Действие | Результат |
+|---|---|---|
+| [29562714024](https://github.com/vpakspace/terraform-yc-hw/actions/runs/29562714024) | `apply` | `No changes` — раннер подхватил state, созданный локально |
+| [29562853573](https://github.com/vpakspace/terraform-yc-hw/actions/runs/29562853573) | `destroy` | `Destroy complete! Resources: 8 destroyed` |
+| [29562986235](https://github.com/vpakspace/terraform-yc-hw/actions/runs/29562986235) | `apply` | `Apply complete! Resources: 8 added` |
+| [29563140262](https://github.com/vpakspace/terraform-yc-hw/actions/runs/29563140262) | `destroy` | `Destroy complete! Resources: 8 destroyed` — финальная очистка |
+
+![прогоны GitHub Actions](img/task6_actions.png)
+
+Самое показательное — первый прогон. Раннер — чужая машина, которая никогда не видела эту
+инфраструктуру, но после `terraform init` он ответил `No changes. Your infrastructure matches
+the configuration.`, потому что состояние лежит в общем бакете. Ровно ради этого remote state
+в команде и заводят: локальный `terraform.tfstate` на ноутбуке одного человека такого не позволяет.
+
+Линтеры в прогонах отработали на коде ветки `terraform-05` и честно показали те самые
+замечания из задания 3 (они исправлены в `terraform-hotfix`, который по условию не вливается):
+
+```
+! Missing version constraint for provider "yandex" in `required_providers`
+! Module source "git::…udjin10/yandex_compute_instance.git?ref=main" uses a default branch as ref (main)
+```
+
+---
+
 ## Задание 7* — отдельный root-модуль для remote state
 
 Код: [`backend-infra/`](backend-infra). Это bootstrap-модуль: он создаёт то, в чём потом
@@ -348,6 +484,28 @@ Error: handling versioning: error putting S3 versioning: AccessDenied
   bootstrap: одноразово выдано через CLI от владельца облака —
   `yc resource-manager folder add-access-binding <folder> --role admin --service-account-id <id>`.
 
+**Версионирование не для галочки.** Бакет хранит историю, и она хорошо показывает, что
+происходило со state за время работы (`list_object_versions` через S3 API):
+
+```
+Версий: 21 | delete-маркеров: 13 | всего: 34
+  версий tfstate: 8      (актуальная — 1067 Б: пустой state после финального destroy)
+  версий tflock: 13, delete-маркеров tflock: 13
+```
+
+Читается это так:
+
+- **8 версий `terraform.tfstate`** — снимок после каждой записи. Любую можно поднять, если
+  состояние испортят: ровно то, ради чего задание требует версионирование.
+- **13 версий `.tflock` и ровно 13 delete-маркеров** — 13 циклов «взял блокировку → отдал».
+  Симметрия означает, что ни одна блокировка не осталась висеть, включая ту, что снималась
+  вручную через `force-unlock`.
+
+Тот же эффект виден в консоли: `yc storage s3api list-objects` показывает **1** актуальный
+объект, а консоль — **10 объектов и 55.6 КБ** (на момент снимка), потому что считает версии.
+
+![бакеты в консоли YC](img/task7_yc_buckets.png)
+
 **Outputs** (`outputs.tf`): имя бакета, `access_key_id` и `secret_access_key` (оба `sensitive`),
 готовый блок `backend` для копирования и содержимое `~/.aws/credentials`. Секреты в
 `backend_config_example` намеренно не подставляются — этот блок идёт в репозиторий.
@@ -364,4 +522,19 @@ terraform output backend_config_example        # → вставлено в 05/sr
 
 ## Очистка
 
-Все созданные ресурсы удалены — см. раздел в конце.
+Все созданные ресурсы удалены, облако вернулось к состоянию до начала работы.
+
+| Что | Чем удалено |
+|---|---|
+| Инфраструктура `05/src` — 2 ВМ, 2 сети, 4 подсети | `destroy` **средствами CI** (задание 6*): `Destroy complete! Resources: 8 destroyed` |
+| Бакет `netology-tf-04-9ruqpkzq`, оставшийся от ДЗ-4 | `terraform destroy` в `04/s3` |
+| Содержимое бакета со state — 34 версии и delete-маркера | S3 API: версионированный бакет не удаляется, пока в нём есть хоть одна версия |
+| Бакет `netology-tfstate-ykcc53e2`, 2 сервисных аккаунта, статические ключи, ключ KMS | `terraform destroy` в `05/backend-infra`: `Destroy complete! Resources: 9 destroyed` |
+| Роль `admin`, выданная SA `terraform` для bootstrap | `yc resource-manager folder remove-access-binding … --role admin` — права вернулись к исходному `editor` |
+
+![очистка](img/cleanup.png)
+
+Осталcя только сервисный аккаунт `terraform`, существовавший до этого ДЗ, — с той же ролью
+`editor`, что и была. Ключи `TFSTATE_ACCESS_KEY` / `TFSTATE_SECRET_KEY` в GitHub Secrets стали
+недействительными вместе с удалёнными сервисными аккаунтами; для повторного прогона нужно
+заново применить `05/backend-infra` и обновить секреты его новыми outputs.

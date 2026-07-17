@@ -1,7 +1,13 @@
 > [!IMPORTANT]
-> ## 📌 ДЗ этой ветки (`terraform-04`) — занятие «Продвинутые методы работы с Terraform»
-> Ответы на задания 1–8, код и **12 скриншотов** — в папке **[`04/` → 04/README.md](04/README.md)**.
-> Ниже оставлен README предыдущего занятия 02 (для истории репозитория).
+> ## 📌 ДЗ этой ветки (`terraform-05`) — занятие «Использование Terraform в команде»
+> Ответы на задания **0–4** и все звёздочки **5–7**, код и **12 скриншотов** —
+> в папке **[`05/` → 05/README.md](05/README.md)**.
+>
+> Задание 3 — pull request **[#1: `terraform-hotfix` → `terraform-05`](https://github.com/vpakspace/terraform-yc-hw/pull/1)**.
+>
+> ДЗ предыдущих занятий — в ветках [`terraform-04`](https://github.com/vpakspace/terraform-yc-hw/tree/terraform-04/04)
+> и [`terraform-03`](https://github.com/vpakspace/terraform-yc-hw/tree/terraform-03/03).
+> Ниже оставлен README занятия 02 (для истории репозитория).
 
 ---
 
