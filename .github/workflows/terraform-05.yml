@@ -1,0 +1,109 @@
+# Задание 6*: CI/CD в GitHub Actions.
+# Пайплайн скачивает репозиторий, прогоняет линтеры, а затем разворачивает или
+# уничтожает инфраструктуру каталога 05/src. Состояние берётся из общего backend
+# в Object Storage (задание 2), поэтому раннер работает с тем же state, что и
+# локальная машина — встроенные блокировки не дают им перетереть друг друга.
+#
+# Запуск ручной (Actions → Terraform ДЗ-05 → Run workflow) с выбором действия:
+#   plan    — только показать план;
+#   apply   — развернуть инфраструктуру;
+#   destroy — уничтожить инфраструктуру.
+name: Terraform ДЗ-05
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Что сделать с инфраструктурой
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+env:
+  TF_VERSION: 1.12.2
+  WORK_DIR: 05/src
+
+jobs:
+  # Этап линтеров: результаты сохраняются артефактами для code review.
+  # Предупреждения не должны валить пайплайн, поэтому exit code гасится.
+  lint:
+    name: tflint + checkov
+    runs-on: ubuntu-latest
+    steps:
+      - name: Скачать репозиторий
+        uses: actions/checkout@v4
+
+      - name: Установить tflint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: tflint
+        working-directory: ${{ env.WORK_DIR }}
+        run: tflint --format compact | tee "$GITHUB_WORKSPACE/tflint.txt" || true
+
+      - name: checkov
+        working-directory: ${{ env.WORK_DIR }}
+        run: |
+          pipx install checkov
+          checkov -d . --compact --quiet | tee "$GITHUB_WORKSPACE/checkov.txt" || true
+
+      - name: Сохранить отчёты линтеров
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: |
+            tflint.txt
+            checkov.txt
+
+  terraform:
+    name: terraform ${{ inputs.action }}
+    needs: lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 05/src
+    env:
+      # Реквизиты Yandex Cloud — из секретов репозитория, в коде их нет.
+      TF_VAR_cloud_id:    ${{ secrets.YC_CLOUD_ID }}
+      TF_VAR_folder_id:   ${{ secrets.YC_FOLDER_ID }}
+      TF_VAR_public_key:  ${{ secrets.VM_PUBLIC_KEY }}
+      TF_VAR_sa_key_file: /tmp/authorized_key.json
+      # Ключи статического доступа для backend "s3" (SA tfstate-editor, задание 7*).
+      AWS_ACCESS_KEY_ID:     ${{ secrets.TFSTATE_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.TFSTATE_SECRET_KEY }}
+
+    steps:
+      - name: Скачать репозиторий
+        uses: actions/checkout@v4
+
+      - name: Положить ключ сервисного аккаунта из секрета
+        run: |
+          install -m 600 /dev/null /tmp/authorized_key.json
+          echo '${{ secrets.YC_SA_KEY }}' > /tmp/authorized_key.json
+
+      - name: Установить Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          # Обёртка подменяет вывод команд своим — мешает читать логи apply/destroy.
+          terraform_wrapper: false
+
+      - name: terraform init (backend в Object Storage)
+        run: terraform init -input=false
+
+      - name: terraform plan
+        run: terraform plan -input=false
+
+      - name: terraform apply
+        if: inputs.action == 'apply'
+        run: terraform apply -auto-approve -input=false
+
+      - name: terraform destroy
+        if: inputs.action == 'destroy'
+        run: terraform destroy -auto-approve -input=false
+
+      - name: Итог
+        run: terraform state list
