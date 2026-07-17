@@ -1,0 +1,25 @@
+$ checkov --version
+3.3.8
+
+$ checkov -d . --compact --quiet
+terraform scan results:
+
+Passed checks: 0, Failed checks: 4, Skipped checks: 0
+
+Check: CKV_TF_1: "Ensure Terraform module sources use a commit hash"
+	FAILED for resource: test-vm
+	File: /demonstration1/vms/main.tf:22-43
+	Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/supply-chain-policies/terraform-policies/ensure-terraform-module-sources-use-git-url-with-commit-hash-revision
+Check: CKV_TF_2: "Ensure Terraform module sources use a tag with a version number"
+	FAILED for resource: test-vm
+	File: /demonstration1/vms/main.tf:22-43
+	Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/supply-chain-policies/terraform-policies/ensure-terraform-module-sources-use-tag
+Check: CKV_TF_1: "Ensure Terraform module sources use a commit hash"
+	FAILED for resource: example-vm
+	File: /demonstration1/vms/main.tf:45-61
+	Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/supply-chain-policies/terraform-policies/ensure-terraform-module-sources-use-git-url-with-commit-hash-revision
+Check: CKV_TF_2: "Ensure Terraform module sources use a tag with a version number"
+	FAILED for resource: example-vm
+	File: /demonstration1/vms/main.tf:45-61
+	Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/supply-chain-policies/terraform-policies/ensure-terraform-module-sources-use-tag
+

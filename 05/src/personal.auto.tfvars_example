@@ -1,0 +1,5 @@
+# Пример личных реквизитов. Скопируйте в personal.auto.tfvars и заполните.
+# (personal.auto.tfvars в .gitignore и в репозиторий не попадает.)
+cloud_id   = ""
+folder_id  = ""
+public_key = "ssh-rsa AAAA... your_public_key"
