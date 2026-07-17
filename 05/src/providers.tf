@@ -32,6 +32,9 @@ terraform {
   required_providers {
     yandex = {
       source = "yandex-cloud/yandex"
+      # Без ограничения версии сборка невоспроизводима: приедет любая версия,
+      # вплоть до мажорной с ломающими изменениями (tflint: terraform_required_providers).
+      version = "~> 0.217"
     }
     # template — для data "template_file" (задание 1: рендер cloud-init с ssh-ключом
     # через блок vars). Провайдер архивный (deprecated), но на linux_amd64 работает;

@@ -52,6 +52,31 @@ variable "iam_propagation_delay" {
   description = "Пауза на распространение выданных ролей перед обращением к S3 API"
 }
 
+###kms vars
+variable "kms_key_name" {
+  type        = string
+  default     = "tfstate-key"
+  description = "Имя ключа KMS, которым шифруется бакет с remote state"
+}
+
+variable "kms_algorithm" {
+  type        = string
+  default     = "AES_256"
+  description = "Алгоритм шифрования ключа KMS"
+}
+
+variable "kms_rotation_period" {
+  type        = string
+  default     = "8760h" # 365 дней
+  description = "Период ротации ключа KMS"
+}
+
+variable "kms_role" {
+  type        = string
+  default     = "kms.keys.encrypterDecrypter"
+  description = "Роль сервисных аккаунтов на ключ KMS: без неё запись объектов в зашифрованный бакет недоступна"
+}
+
 variable "bucket_prefix" {
   type        = string
   default     = "netology-tfstate"
