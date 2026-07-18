@@ -41,7 +41,10 @@ module "vpc_prod" {
 # Обе ВМ — в develop-сети (subnet из vpc-модуля, задание 2), preemptible для экономии.
 # ─────────────────────────────────────────────────────────────────────────────
 module "marketing_vm" {
-  source = "git::https://github.com/udjin10/yandex_compute_instance.git?ref=main"
+  # Модуль закреплён коммит-хешем тега 1.0.0 (было ?ref=main — подвижная ветка).
+  # Хеш, а не имя тега: тег можно передвинуть, хеш неизменяем. Это закрывает сразу
+  # три замечания линтеров — terraform_module_pinned_source, CKV_TF_1 и CKV_TF_2.
+  source = "git::https://github.com/udjin10/yandex_compute_instance.git?ref=4d05fab828b1fcae16556a4d167134efca2fccf2" # tag 1.0.0
 
   env_name       = "marketing"
   network_id     = module.vpc.network_id
@@ -65,7 +68,10 @@ module "marketing_vm" {
 }
 
 module "analytics_vm" {
-  source = "git::https://github.com/udjin10/yandex_compute_instance.git?ref=main"
+  # Модуль закреплён коммит-хешем тега 1.0.0 (было ?ref=main — подвижная ветка).
+  # Хеш, а не имя тега: тег можно передвинуть, хеш неизменяем. Это закрывает сразу
+  # три замечания линтеров — terraform_module_pinned_source, CKV_TF_1 и CKV_TF_2.
+  source = "git::https://github.com/udjin10/yandex_compute_instance.git?ref=4d05fab828b1fcae16556a4d167134efca2fccf2" # tag 1.0.0
 
   env_name       = "analytics"
   network_id     = module.vpc.network_id

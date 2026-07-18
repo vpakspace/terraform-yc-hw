@@ -64,6 +64,32 @@ resource "yandex_iam_service_account_static_access_key" "tfstate" {
   description        = "Static access key для backend S3 (ДЗ 05)"
 }
 
+# ─── Шифрование ─────────────────────────────────────────────────────────────
+# checkov CKV_YC_3 «Ensure storage bucket is encrypted»: state — это слепок всей
+# инфраструктуры, включая чувствительные значения, поэтому в бакете он должен
+# лежать зашифрованным. Object Storage шифрует объекты ключом KMS.
+resource "yandex_kms_symmetric_key" "tfstate" {
+  name              = var.kms_key_name
+  folder_id         = var.folder_id
+  description       = "Шифрование бакета с remote state (ДЗ 05)"
+  default_algorithm = var.kms_algorithm
+  rotation_period   = var.kms_rotation_period
+}
+
+# Оба аккаунта должны уметь шифровать/расшифровывать: admin — чтобы настроить
+# бакет, editor — чтобы backend мог читать и писать state и lock-файл.
+resource "yandex_kms_symmetric_key_iam_member" "bucket_admin" {
+  symmetric_key_id = yandex_kms_symmetric_key.tfstate.id
+  role             = var.kms_role
+  member           = "serviceAccount:${yandex_iam_service_account.bucket_admin.id}"
+}
+
+resource "yandex_kms_symmetric_key_iam_member" "tfstate" {
+  symmetric_key_id = yandex_kms_symmetric_key.tfstate.id
+  role             = var.kms_role
+  member           = "serviceAccount:${yandex_iam_service_account.tfstate.id}"
+}
+
 # ─── Бакет ──────────────────────────────────────────────────────────────────
 # Роли выдаются асинхронно: без паузы создание бакета ключом SA падает
 # с AccessDenied — ключ уже есть, а права ещё не распространились.
@@ -71,6 +97,8 @@ resource "time_sleep" "wait_for_iam" {
   depends_on = [
     yandex_resourcemanager_folder_iam_member.bucket_admin,
     yandex_resourcemanager_folder_iam_member.tfstate,
+    yandex_kms_symmetric_key_iam_member.bucket_admin,
+    yandex_kms_symmetric_key_iam_member.tfstate,
   ]
   create_duration = var.iam_propagation_delay
 }
@@ -85,6 +113,16 @@ resource "yandex_storage_bucket" "tfstate" {
   # История версий state: позволяет откатиться, если состояние испортили.
   versioning {
     enabled = true
+  }
+
+  # Шифрование объектов ключом KMS (checkov CKV_YC_3).
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        kms_master_key_id = yandex_kms_symmetric_key.tfstate.id
+        sse_algorithm     = "aws:kms"
+      }
+    }
   }
 
   depends_on = [time_sleep.wait_for_iam]
